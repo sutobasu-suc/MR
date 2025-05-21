@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <title>MR32風レジ</title>
+  <style>
+    body {
+      font-family: 'Meiryo', sans-serif;
+      background-color: #c0c0c0;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      gap: 20px;
+    }
+    .left, .right {
+      flex: 1;
+    }
+    .title-bar {
+      background-color: #1f2f5f;
+      color: white;
+      padding: 5px 10px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 180px);
+      gap: 10px;
+    }
+    .button-box {
+      border: 2px solid #666;
+      background: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+    .button-box:hover {
+      background-color: #e8e8e8;
+    }
+    .button-main {
+      font-size: 16px;
+      font-weight: bold;
+      padding: 10px;
+      background: #ddd;
+      text-align: center;
+      border-bottom: 1px solid #999;
+    }
+    .button-sub {
+      font-size: 12px;
+      padding: 5px;
+      text-align: center;
+      background: #eee;
+    }
+    .bottom-section {
+      margin-top: 30px;
+    }
+    #total {
+      font-size: 24px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 60px);
+      gap: 5px;
+      margin: 10px 0;
+    }
+    .keypad button {
+      padding: 10px;
+      font-size: 18px;
+      background: #ddd;
+      border: 2px solid #333;
+      cursor: pointer;
+    }
+    #inputDisplay, #paidDisplay {
+      font-size: 20px;
+      padding: 5px;
+      text-align: right;
+      width: 180px;
+    }
+    .history-box {
+      background: #fff;
+      border: 1px solid #333;
+      padding: 10px;
+      height: 400px;
+      overflow-y: scroll;
+      margin-bottom: 10px;
+    }
+    .history-total {
+      font-weight: bold;
+      font-size: 18px;
+    }
+    button.action {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: 2px solid #333;
+      background-color: #ccc;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    /* ===== Settings modal ===== */
+    #settingsModal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      visibility: hidden;
+    }
+    #settingsModal.active { visibility: visible; }
+    .modal-content {
+      background: #fff;
+      border: 2px solid #333;
+      width: 420px;
+      padding: 20px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .item-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .item-row input[type="text"] {
+      flex: 1;
+      padding: 4px;
+    }
+    .item-row input[type="number"] { width: 90px; }
+    .item-row button { width: 60px; }
+  </style>
+</head>
+<body>
+  <div class="left">
+    <div class="title-bar">Ｔ Ｒ Ｓ端末 <button style="float:right" onclick="openSettings()">設定</button></div>
+
+    <div id="itemGrid" class="grid" style="margin-top: 10px;"></div>
+
+    <div style="margin-top: 20px;">
+      <div class="button-main">金額入力（その他・募金）</div>
+      <input type="text" id="inputDisplay" readonly>
+      <div class="keypad">
+        <button onclick="press(1)">1</button>
+        <button onclick="press(2)">2</button>
+        <button onclick="press(3)">3</button>
+        <button onclick="press(4)">4</button>
+        <button onclick="press(5)">5</button>
+        <button onclick="press(6)">6</button>
+        <button onclick="press(7)">7</button>
+        <button onclick="press(8)">8</button>
+        <button onclick="press(9)">9</button>
+        <button onclick="press(0)">0</button>
+        <button onclick="clearInput()">C</button>
+      </div>
+      <button class="action" onclick="addInputToTotal()">追加</button>
+    </div>
+
+    <div class="bottom-section">
+      <div id="total">合計: 0 円</div>
+      <div style="margin-top: 10px;">
+        支払い金額: <input type="text" id="paidDisplay" placeholder="円単位" />
+      </div>
+      <div id="changeOutput"></div>
+      <button class="action" onclick="checkout()">支払い</button>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="title-bar">履歴</div>
+    <div class="history-box" id="historyBox"></div>
+    <div class="history-total" id="historyTotal">合計: 0 円</div>
+    <button class="action" onclick="clearHistory()">履歴を削除</button>
+  </div>
+
+  <!-- ===== Settings Modal ===== -->
+  <div id="settingsModal">
+    <div class="modal-content">
+      <h3>商品設定</h3>
+      <div id="itemList"></div>
+      <hr>
+      <div class="item-row">
+        <input type="text" id="newName" placeholder="商品名">
+        <input type="number" id="newPrice" placeholder="価格">
+        <button onclick="addNewItem()">追加</button>
+      </div>
+      <button class="action" onclick="closeSettings()">閉じる</button>
+    </div>
+  </div>
+
+<script>
+  let total = 0;
+  let input = '';
+
+  // ===== Item management =====
+  const DEFAULT_ITEMS = [
+    { name: '一般', price: 1000 },
+    { name: 'ゲーム部', price: 700 }
+  ];
+
+  function getItems(){
+    return JSON.parse(localStorage.getItem('items')||'null') || DEFAULT_ITEMS;
+  }
+  function saveItems(items){ localStorage.setItem('items', JSON.stringify(items)); }
+
+  function renderItems(){
+    const grid = document.getElementById('itemGrid');
+    grid.innerHTML='';
+    getItems().forEach(({name,price})=>{
+      const box=document.createElement('div');
+      box.className='button-box';
+      box.onclick=()=>addAmount(price);
+      box.innerHTML=`<div class="button-main">${name}</div><div class="button-sub">${price}円</div>`;
+      grid.appendChild(box);
+    });
+  }
+
+  // ===== Settings modal =====
+  function openSettings(){
+    document.getElementById('settingsModal').classList.add('active');
+    drawItemList();
+  }
+  function closeSettings(){ document.getElementById('settingsModal').classList.remove('active'); }
+
+  function drawItemList(){
+    const list=document.getElementById('itemList');
+    list.innerHTML='';
+    getItems().forEach((it,idx)=>{
+      const row=document.createElement('div');
+      row.className='item-row';
+      row.innerHTML=`<input type="text" value="${it.name}" onchange="updateItemName(${idx},this.value)">`+
+                    `<input type="number" value="${it.price}" onchange="updateItemPrice(${idx},this.value)">`+
+                    `<button onclick="deleteItem(${idx})">削除</button>`;
+      list.appendChild(row);
+    });
+  }
+  function updateItemName(i,val){ const items=getItems(); items[i].name=val; saveItems(items); renderItems(); }
+  function updateItemPrice(i,val){ const items=getItems(); items[i].price=parseInt(val)||0; saveItems(items); renderItems(); }
+  function deleteItem(i){ const items=getItems(); items.splice(i,1); saveItems(items); drawItemList(); renderItems(); }
+  function addNewItem(){
+    const name=document.getElementById('newName').value.trim();
+    const price=parseInt(document.getElementById('newPrice').value);
+    if(!name||isNaN(price)){ alert('商品名と価格を入力してください'); return; }
+    const items=getItems(); items.push({name,price}); saveItems(items);
+    document.getElementById('newName').value=''; document.getElementById('newPrice').value='';
+    drawItemList(); renderItems();
+  }
+
+  // ===== Sale functions =====
+  function press(num){ input+=num; document.getElementById('inputDisplay').value=input; }
+  function clearInput(){ input=''; document.getElementById('inputDisplay').value=''; }
+  function addInputToTotal(){ const amount=parseInt(input); if(!isNaN(amount)){ addAmount(amount); clearInput(); }}
+  function addAmount(amount){ total+=amount; updateDisplay(); }
+  function updateDisplay(){ document.getElementById('total').textContent=`合計: ${total} 円`; }
+
+  function checkout(){
+    const paid=parseInt(document.getElementById('paidDisplay').value);
+    if(isNaN(paid)){ alert('支払金額を入力してください。'); return; }
+    if(paid<total){ alert('支払金額が不足しています。'); return; }
+    const change=paid-total; document.getElementById('changeOutput').textContent=`おつり: ${change} 円`;
+    const now=new Date().toLocaleString();
+    const record={time:now,amount:total,paid,change};
+    const history=JSON.parse(localStorage.getItem('salesHistory')||'[]');
+    history.push(record); localStorage.setItem('salesHistory',JSON.stringify(history));
+    total=0; updateDisplay(); document.getElementById('paidDisplay').value=''; showHistory();
+  }
+
+  function showHistory(){
+    const box=document.getElementById('historyBox');
+    const ht=document.getElementById('historyTotal');
+    const history=JSON.parse(localStorage.getItem('salesHistory')||'[]');
+    box.innerHTML=''; let sum=0;
+    history.forEach(e=>{ const d=document.createElement('div'); d.textContent=`${e.time} - 金額:${e.amount}円, 支払い:${e.paid}円, おつり:${e.change}円`; box.appendChild(d); sum+=e.amount;});
+    ht.textContent=`合計: ${sum} 円`; }
+  function clearHistory(){ localStorage.removeItem('salesHistory'); showHistory(); }
+
+  // ===== init =====
+  window.onload=()=>{ renderItems(); showHistory(); };
+</script>
+</body>
+</html>
